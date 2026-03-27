@@ -72,9 +72,16 @@
   <script src="flutter_bootstrap.js" async></script>
   <script>
     window.addEventListener('flutter-first-frame', function() {
-      var el = document.getElementById('loading-screen');
-      el.classList.add('fade-out');
-      setTimeout(function() { el.remove(); }, 300);
+      // 폰트 로딩 완료 후 로딩 화면 제거
+      document.fonts.ready.then(function() {
+        setTimeout(function() {
+          var el = document.getElementById('loading-screen');
+          if (el) {
+            el.classList.add('fade-out');
+            setTimeout(function() { el.remove(); }, 300);
+          }
+        }, 500);
+      });
     });
   </script>
 </body>
