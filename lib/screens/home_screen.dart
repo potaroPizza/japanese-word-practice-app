@@ -28,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
+    await _wordRepo.preloadAll();
     for (final level in WordRepository.levels) {
       final count = await _wordRepo.getWordCount(level);
       final progress = await _studyRepo.getLevelProgress(level, count);

@@ -7,6 +7,14 @@ class WordRepository {
 
   static const List<String> levels = ['N5', 'N4', 'N3', 'N2', 'N1'];
 
+  bool _preloaded = false;
+
+  Future<void> preloadAll() async {
+    if (_preloaded) return;
+    await Future.wait(levels.map((level) => getWordsByLevel(level)));
+    _preloaded = true;
+  }
+
   Future<List<Word>> getWordsByLevel(String level) async {
     if (_cache.containsKey(level)) {
       return _cache[level]!;
