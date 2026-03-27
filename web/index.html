@@ -72,7 +72,6 @@
   <script src="flutter_bootstrap.js" async></script>
   <script>
     window.addEventListener('flutter-first-frame', function() {
-      // 폰트 로딩 완료 후 로딩 화면 제거
       document.fonts.ready.then(function() {
         setTimeout(function() {
           var el = document.getElementById('loading-screen');
@@ -83,6 +82,20 @@
         }, 500);
       });
     });
+
+    // 새 버전 감지 시 자동 새로고침
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('flutter_service_worker.js').then(function(reg) {
+        reg.onupdatefound = function() {
+          var newWorker = reg.installing;
+          newWorker.onstatechange = function() {
+            if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          };
+        };
+      });
+    }
   </script>
 </body>
 </html>
