@@ -90,104 +90,85 @@ class _PinScreenState extends State<PinScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F0FF),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.lock_outline_rounded,
-                  size: 64,
-                  color: Color(0xFF3F51B5),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '일본어 단어 연습',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.indigo.shade700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'PIN을 입력하세요',
-                  style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                ),
-                const SizedBox(height: 32),
-
-                // PIN 표시 (4칸 원형)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(4, (index) {
-                    final filled = index < _enteredPin.length;
-                    return Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 10),
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: filled
-                            ? const Color(0xFF3F51B5)
-                            : Colors.transparent,
-                        border: Border.all(
-                          color: const Color(0xFF3F51B5),
-                          width: 2,
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 16),
-
-                // 에러 메시지 또는 잠금 시간
-                if (_isLocked && _lockUntil != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          '잠금 상태',
-                          style: TextStyle(
-                            color: Colors.red.shade700,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _formatRemaining(_lockUntil!),
-                          style: TextStyle(
-                            color: Colors.red.shade600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (_errorMessage.isNotEmpty)
-                  Text(
-                    _errorMessage,
-                    style: TextStyle(
-                      color: Colors.red.shade600,
-                      fontSize: 14,
-                    ),
-                  ),
-
-                const SizedBox(height: 32),
-
-                // 숫자 키패드
-                _buildKeypad(),
-              ],
+        child: Stack(
+          children: [
+            // CJK 폰트 프리로드용 (화면 밖에 렌더링)
+            const Positioned(
+              left: -9999,
+              child: Text('日本語 한국어 食べる 勉強 練習 読む 書く 聞く 話す', style: TextStyle(fontSize: 1)),
             ),
-          ),
+            Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.lock_outline_rounded,
+                      size: 64,
+                      color: Color(0xFF3F51B5),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      '일본어 단어 연습',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.indigo.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'PIN을 입력하세요',
+                      style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 32),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(4, (index) {
+                        final filled = index < _enteredPin.length;
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 10),
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: filled
+                                ? const Color(0xFF3F51B5)
+                                : Colors.transparent,
+                            border: Border.all(
+                              color: const Color(0xFF3F51B5),
+                              width: 2,
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                    const SizedBox(height: 16),
+                    if (_isLocked && _lockUntil != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          children: [
+                            Text('잠금 상태', style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text(_formatRemaining(_lockUntil!), style: TextStyle(color: Colors.red.shade600, fontSize: 14)),
+                          ],
+                        ),
+                      )
+                    else if (_errorMessage.isNotEmpty)
+                      Text(_errorMessage, style: TextStyle(color: Colors.red.shade600, fontSize: 14)),
+                    const SizedBox(height: 32),
+                    _buildKeypad(),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
