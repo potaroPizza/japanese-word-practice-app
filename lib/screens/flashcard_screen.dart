@@ -197,11 +197,11 @@ class _FlashcardScreenState extends State<FlashcardScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.arrow_back, size: 14, color: Colors.red[300]),
-                Text(' moreu-m ',
+                Text(' 모름 ',
                     style: TextStyle(fontSize: 12, color: Colors.grey[500])),
                 Text('|',
                     style: TextStyle(fontSize: 12, color: Colors.grey[400])),
-                Text(' algo iss-eum ',
+                Text(' 알고 있음 ',
                     style: TextStyle(fontSize: 12, color: Colors.grey[500])),
                 Icon(Icons.arrow_forward, size: 14, color: Colors.green[300]),
               ],
@@ -233,7 +233,7 @@ class _FlashcardScreenState extends State<FlashcardScreen>
                       ? Duration.zero
                       : const Duration(milliseconds: 200),
                   transform: Matrix4.identity()
-                    ..translateByDouble(_dragOffset, 0, 0, 0)
+                    ..translate(_dragOffset, 0.0, 0.0)
                     ..rotateZ(_dragOffset * 0.001),
                   child: Stack(
                     children: [
