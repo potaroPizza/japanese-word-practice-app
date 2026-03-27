@@ -16,7 +16,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
-        fontFamily: 'Noto Sans KR',
+        fontFamily: 'NotoSansJP',
       ),
       home: const PinScreen(),
     );
