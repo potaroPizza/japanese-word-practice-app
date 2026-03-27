@@ -50,3 +50,4 @@ docs/*
 
 # Temp scripts
 temp/
+*.png

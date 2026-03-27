@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../data/word_repository.dart';
-import '../data/study_repository.dart';
 import 'progress_screen.dart';
 import 'flashcard_screen.dart';
 import 'quiz_screen.dart';
 import 'fill_blank_screen.dart';
+import 'matching_screen.dart';
+import 'listening_screen.dart';
+import 'speed_ox_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,38 +16,46 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final WordRepository _wordRepo = WordRepository();
-  final StudyRepository _studyRepo = StudyRepository();
+  final List<_ModeData> _modes = [
+    _ModeData(
+      name: '플래시카드',
+      icon: Icons.style_outlined,
+      color: const Color(0xFF5C6BC0),
+      screenBuilder: (level) => FlashcardScreen(level: level),
+    ),
+    _ModeData(
+      name: '객관식 퀴즈',
+      icon: Icons.quiz_outlined,
+      color: const Color(0xFF7E57C2),
+      screenBuilder: (level) => QuizScreen(level: level),
+    ),
+    _ModeData(
+      name: '빈칸 채우기',
+      icon: Icons.edit_note_outlined,
+      color: const Color(0xFF9575CD),
+      screenBuilder: (level) => FillBlankScreen(level: level),
+    ),
+    _ModeData(
+      name: '매칭 게임',
+      icon: Icons.grid_view_rounded,
+      color: const Color(0xFF26A69A),
+      screenBuilder: (level) => MatchingScreen(level: level),
+    ),
+    _ModeData(
+      name: '리스닝 퀴즈',
+      icon: Icons.headphones_rounded,
+      color: const Color(0xFFEF5350),
+      screenBuilder: (level) => ListeningScreen(level: level),
+    ),
+    _ModeData(
+      name: '스피드 O/X',
+      icon: Icons.speed_rounded,
+      color: const Color(0xFFFF9800),
+      screenBuilder: (level) => SpeedOxScreen(level: level),
+    ),
+  ];
 
-  // 레벨별 데이터: { level: { wordCount, studied, correct } }
-  final Map<String, Map<String, int>> _levelData = {};
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    await _wordRepo.preloadAll();
-    for (final level in WordRepository.levels) {
-      final count = await _wordRepo.getWordCount(level);
-      final progress = await _studyRepo.getLevelProgress(level, count);
-      _levelData[level] = {
-        'wordCount': count,
-        'studied': progress['studied'] ?? 0,
-        'correct': progress['correct'] ?? 0,
-        'total': progress['total'] ?? count,
-      };
-    }
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-  void _showModeDialog(String level) {
+  void _showLevelDialog(String modeName, Color color, Widget Function(String level) screenBuilder) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -56,86 +66,39 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '$level 학습 모드',
+                '$modeName - 레벨 선택',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: Colors.indigo.shade700,
+                  color: color,
                 ),
               ),
               const SizedBox(height: 20),
-              _buildModeButton(
-                icon: Icons.style_outlined,
-                label: '플래시카드',
-                color: const Color(0xFF5C6BC0),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FlashcardScreen(level: level),
+              ...WordRepository.levels.map((level) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => screenBuilder(level)),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: color,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
-              _buildModeButton(
-                icon: Icons.quiz_outlined,
-                label: '객관식 퀴즈',
-                color: const Color(0xFF7E57C2),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => QuizScreen(level: level),
+                    child: Text(
+                      'JLPT $level',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
-              _buildModeButton(
-                icon: Icons.edit_note_outlined,
-                label: '빈칸 채우기',
-                color: const Color(0xFF9575CD),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => FillBlankScreen(level: level),
-                    ),
-                  );
-                },
-              ),
+                  ),
+                ),
+              )),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, color: Colors.white),
-        label: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
           ),
         ),
       ),
@@ -147,200 +110,127 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F0FF),
       body: SafeArea(
-        child: _isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFF3F51B5)),
-              )
-            : Column(
+        child: Column(
+          children: [
+            // 상단 타이틀
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+              child: Row(
                 children: [
-                  // 상단 타이틀
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.menu_book_rounded,
-                          size: 32,
-                          color: Colors.indigo.shade600,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          '일본어 단어 연습',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.indigo.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
+                  Icon(
+                    Icons.menu_book_rounded,
+                    size: 32,
+                    color: Colors.indigo.shade600,
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '학습할 레벨을 선택하세요',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 레벨 카드 목록
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: WordRepository.levels.length,
-                      itemBuilder: (context, index) {
-                        final level = WordRepository.levels[index];
-                        final data = _levelData[level]!;
-                        final wordCount = data['wordCount']!;
-                        final studied = data['studied']!;
-                        final progress =
-                            wordCount == 0 ? 0.0 : studied / wordCount;
-
-                        return _buildLevelCard(
-                          level: level,
-                          wordCount: wordCount,
-                          progress: progress,
-                        );
-                      },
-                    ),
-                  ),
-
-                  // 하단 진도 확인 버튼
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ProgressScreen(),
-                            ),
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.bar_chart_rounded,
-                          color: Colors.white,
-                        ),
-                        label: const Text(
-                          '진도 확인',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF3F51B5),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                      ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '일본어 단어 연습',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.indigo.shade700,
                     ),
                   ),
                 ],
               ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '학습 모드를 선택하세요',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 모드 카드 그리드
+            Expanded(
+              child: GridView.count(
+                crossAxisCount: 2,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.5,
+                children: _modes.map((mode) => _buildModeCard(mode)).toList(),
+              ),
+            ),
+
+            // 하단 진도 확인 버튼
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ProgressScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(
+                    Icons.bar_chart_rounded,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    '진도 확인',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF3F51B5),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildLevelCard({
-    required String level,
-    required int wordCount,
-    required double progress,
-  }) {
-    // 레벨별 그라데이션 색상
-    final colors = {
-      'N5': [const Color(0xFF5C6BC0), const Color(0xFF7986CB)],
-      'N4': [const Color(0xFF7E57C2), const Color(0xFF9575CD)],
-      'N3': [const Color(0xFF5E35B1), const Color(0xFF7E57C2)],
-      'N2': [const Color(0xFF4527A0), const Color(0xFF5E35B1)],
-      'N1': [const Color(0xFF311B92), const Color(0xFF4527A0)],
-    };
-
-    final levelColors =
-        colors[level] ?? [const Color(0xFF3F51B5), const Color(0xFF5C6BC0)];
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
+  Widget _buildModeCard(_ModeData mode) {
+    return Material(
+      borderRadius: BorderRadius.circular(16),
+      elevation: 2,
+      child: InkWell(
+        onTap: () => _showLevelDialog(mode.name, mode.color, mode.screenBuilder),
         borderRadius: BorderRadius.circular(16),
-        elevation: 2,
-        child: InkWell(
-          onTap: () => _showModeDialog(level),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
-                colors: levelColors,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+        child: Container(
+          height: 120,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: LinearGradient(
+              colors: [mode.color, mode.color.withValues(alpha: 0.7)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
+          ),
+          child: Center(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'JLPT $level',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '$wordCount단어',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // 프로그레스 바
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    backgroundColor: Colors.white.withValues(alpha: 0.25),
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
+                Icon(mode.icon, size: 32, color: Colors.white),
+                const SizedBox(height: 8),
                 Text(
-                  '학습 진도 ${(progress * 100).toStringAsFixed(1)}%',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 13,
+                  mode.name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
                 ),
               ],
@@ -350,4 +240,18 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+class _ModeData {
+  final String name;
+  final IconData icon;
+  final Color color;
+  final Widget Function(String level) screenBuilder;
+
+  const _ModeData({
+    required this.name,
+    required this.icon,
+    required this.color,
+    required this.screenBuilder,
+  });
 }

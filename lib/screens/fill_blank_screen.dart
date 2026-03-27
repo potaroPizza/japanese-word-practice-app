@@ -18,63 +18,90 @@ class _FillBlankScreenState extends State<FillBlankScreen> {
 
   final WordRepository _wordRepo = WordRepository();
   final StudyRepository _studyRepo = StudyRepository();
-  final TextEditingController _inputController = TextEditingController();
+  final Random _random = Random();
+  final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
-  List<Word> _words = [];
+  List<Word> _sessionWords = [];
   int _currentIndex = 0;
   bool _isLoading = true;
   bool _isSessionComplete = false;
   int _correctCount = 0;
   int _incorrectCount = 0;
 
-  // Answer state
+  // 현재 문제 상태
+  String _sentenceWithBlank = '';
+  String _answer = '';
+  String _fullSentence = '';
+  String _translation = '';
   bool _answered = false;
   bool _isCorrect = false;
-  bool _hintShown = false;
+  bool _hintUsed = false;
+  String _hint = '';
 
   @override
   void initState() {
     super.initState();
     _loadWords();
-    _inputController.addListener(() {
-      // Trigger rebuild to update Check button enabled state
-      if (!_answered) setState(() {});
-    });
   }
 
   @override
   void dispose() {
-    _inputController.dispose();
+    _controller.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
   Future<void> _loadWords() async {
     final allWords = await _wordRepo.getWordsByLevel(widget.level);
-    final shuffled = List<Word>.from(allWords)..shuffle(Random());
+    // 예문이 있는 단어만 필터링
+    final wordsWithExamples = allWords.where((w) => w.examples.isNotEmpty).toList();
+    wordsWithExamples.shuffle(_random);
     setState(() {
-      _words = shuffled.take(_sessionSize).toList();
+      _sessionWords = wordsWithExamples.take(_sessionSize).toList();
       _isLoading = false;
+    });
+    if (_sessionWords.isNotEmpty) _generateQuestion();
+  }
+
+  void _generateQuestion() {
+    final word = _sessionWords[_currentIndex];
+    final example = word.examples[_random.nextInt(word.examples.length)];
+
+    _fullSentence = example.sentence;
+    _translation = example.translation;
+
+    // 문장에서 단어(kanji 또는 reading)를 빈칸으로 치환
+    final target = word.kanji ?? word.reading;
+    if (_fullSentence.contains(target)) {
+      _sentenceWithBlank = _fullSentence.replaceFirst(target, '＿＿＿');
+      _answer = target;
+    } else if (_fullSentence.contains(word.reading)) {
+      _sentenceWithBlank = _fullSentence.replaceFirst(word.reading, '＿＿＿');
+      _answer = word.reading;
+    } else {
+      // 문장에 단어가 포함되지 않는 경우 reading을 정답으로
+      _sentenceWithBlank = '＿＿＿';
+      _answer = word.reading;
+    }
+
+    _hint = _answer.isNotEmpty ? _answer.substring(0, 1) : '';
+
+    setState(() {
+      _controller.clear();
+      _answered = false;
+      _isCorrect = false;
+      _hintUsed = false;
     });
   }
 
-  String _normalize(String input) {
-    // Remove whitespace (half-width and full-width)
-    return input
-        .replaceAll(RegExp(r'\s'), '') // half-width spaces
-        .replaceAll('\u3000', '')      // full-width space
-        .trim();
-  }
-
-  Future<void> _checkAnswer() async {
+  void _checkAnswer() {
     if (_answered) return;
+    final input = _controller.text.trim().replaceAll(' ', '').replaceAll('\u3000', '');
+    final correct = _answer.replaceAll(' ', '').replaceAll('\u3000', '');
 
-    final word = _words[_currentIndex];
-    final userInput = _normalize(_inputController.text);
-    final correctAnswer = _normalize(word.reading);
-
-    final isCorrect = userInput == correctAnswer;
+    final word = _sessionWords[_currentIndex];
+    final isCorrect = input == correct || input == word.reading || (word.kanji != null && input == word.kanji);
 
     setState(() {
       _answered = true;
@@ -82,47 +109,37 @@ class _FillBlankScreenState extends State<FillBlankScreen> {
     });
 
     if (isCorrect) {
-      await _studyRepo.markCorrect(widget.level, word.id);
+      _studyRepo.markCorrect(widget.level, word.id);
       _correctCount++;
     } else {
-      await _studyRepo.markIncorrect(widget.level, word.id);
+      _studyRepo.markIncorrect(widget.level, word.id);
       _incorrectCount++;
     }
   }
 
   void _nextQuestion() {
-    if (_currentIndex + 1 >= _words.length) {
+    if (_currentIndex + 1 >= _sessionWords.length) {
       setState(() => _isSessionComplete = true);
     } else {
-      setState(() {
-        _currentIndex++;
-        _answered = false;
-        _isCorrect = false;
-        _hintShown = false;
-        _inputController.clear();
-      });
+      setState(() => _currentIndex++);
+      _generateQuestion();
       _focusNode.requestFocus();
     }
   }
 
   void _showHint() {
-    if (_answered) return;
-    setState(() => _hintShown = true);
+    setState(() => _hintUsed = true);
   }
 
   void _restartSession() {
+    _sessionWords.shuffle(_random);
     setState(() {
-      _words.shuffle(Random());
       _currentIndex = 0;
       _correctCount = 0;
       _incorrectCount = 0;
-      _answered = false;
-      _isCorrect = false;
-      _hintShown = false;
       _isSessionComplete = false;
-      _inputController.clear();
     });
-    _focusNode.requestFocus();
+    _generateQuestion();
   }
 
   @override
@@ -130,351 +147,255 @@ class _FillBlankScreenState extends State<FillBlankScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F0FF),
       appBar: AppBar(
-        title: Text('${widget.level} Fill in the Blank'),
-        backgroundColor: const Color(0xFF3949AB),
+        title: Text('${widget.level} 빈칸 채우기'),
+        backgroundColor: const Color(0xFF9575CD),
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF3949AB)))
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF9575CD)))
           : _isSessionComplete
               ? _buildResultView()
-              : _buildQuestionView(),
+              : _buildQuizView(),
     );
   }
 
-  Widget _buildQuestionView() {
-    final word = _words[_currentIndex];
-    final progress = (_currentIndex + 1) / _words.length;
+  Widget _buildQuizView() {
+    final word = _sessionWords[_currentIndex];
+    final progress = (_currentIndex + 1) / _sessionWords.length;
 
     return SafeArea(
-      child: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        behavior: HitTestBehavior.opaque,
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          // Progress
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Column(
               children: [
-                // Progress bar
-                Padding(
-                  padding: const EdgeInsets.only(top: 16, bottom: 8),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '${_currentIndex + 1} / ${_words.length}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF3949AB),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Icon(Icons.check_circle,
-                                  size: 18, color: Colors.green[600]),
-                              const SizedBox(width: 4),
-                              Text('$_correctCount',
-                                  style: TextStyle(
-                                      color: Colors.green[600],
-                                      fontWeight: FontWeight.w600)),
-                              const SizedBox(width: 12),
-                              Icon(Icons.cancel,
-                                  size: 18, color: Colors.red[400]),
-                              const SizedBox(width: 4),
-                              Text('$_incorrectCount',
-                                  style: TextStyle(
-                                      color: Colors.red[400],
-                                      fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: progress,
-                          minHeight: 6,
-                          backgroundColor: const Color(0xFFE8E0F0),
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                              Color(0xFF3949AB)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // Korean meaning (question)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(28),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF3949AB).withValues(alpha: 0.1),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'What is the reading for:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[500],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        word.meaning,
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A237E),
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (word.kanji != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          word.kanji!,
-                          style: TextStyle(
-                            fontSize: 20,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Hint
-                if (_hintShown && !_answered)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.amber[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.amber[300]!),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.lightbulb, color: Colors.amber[700], size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Hint: ${word.reading.characters.first}...',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.amber[800],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // Input field
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _answered
-                            ? (_isCorrect
-                                ? Colors.green.withValues(alpha: 0.15)
-                                : Colors.red.withValues(alpha: 0.15))
-                            : const Color(0xFF3949AB).withValues(alpha: 0.08),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _inputController,
-                    focusNode: _focusNode,
-                    enabled: !_answered,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1A237E),
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Type in hiragana',
-                      hintStyle: TextStyle(
-                        fontSize: 18,
-                        color: Colors.grey[400],
-                        fontWeight: FontWeight.normal,
-                      ),
-                      filled: true,
-                      fillColor: _answered
-                          ? (_isCorrect ? Colors.green[50] : Colors.red[50])
-                          : Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                            color: Color(0xFFE0D8EE), width: 1.5),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                            color: Color(0xFF3949AB), width: 2),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 18),
-                    ),
-                    onSubmitted: (_) => _answered ? _nextQuestion() : _checkAnswer(),
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-
-                // Result feedback
-                if (_answered) ...[
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _isCorrect ? Colors.green[50] : Colors.red[50],
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: _isCorrect
-                            ? Colors.green[300]!
-                            : Colors.red[300]!,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _isCorrect ? Icons.check_circle : Icons.cancel,
-                              color: _isCorrect
-                                  ? Colors.green[600]
-                                  : Colors.red[500],
-                              size: 28,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _isCorrect ? 'Correct!' : 'Incorrect',
-                              style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: _isCorrect
-                                    ? Colors.green[700]
-                                    : Colors.red[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (!_isCorrect) ...[
-                          const SizedBox(height: 10),
-                          Text(
-                            'Answer: ${word.reading}',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-
-                // Action buttons
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    if (!_answered) ...[
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _hintShown ? null : _showHint,
-                          icon: const Icon(Icons.lightbulb_outline),
-                          label: const Text('Hint'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.amber[700],
-                            side: BorderSide(
-                                color: _hintShown
-                                    ? Colors.grey[300]!
-                                    : Colors.amber[400]!),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: FilledButton.icon(
-                          onPressed: _inputController.text.trim().isEmpty
-                              ? null
-                              : _checkAnswer,
-                          icon: const Icon(Icons.check),
-                          label: const Text('Check'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF3949AB),
-                            disabledBackgroundColor: Colors.grey[300],
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ] else
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: _nextQuestion,
-                          icon: const Icon(Icons.arrow_forward),
-                          label: Text(
-                            _currentIndex + 1 >= _words.length
-                                ? 'View Results'
-                                : 'Next',
-                          ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF3949AB),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
+                    Text(
+                      '${_currentIndex + 1} / ${_sessionWords.length}',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF9575CD)),
+                    ),
+                    Row(
+                      children: [
+                        Icon(Icons.check_circle, size: 18, color: Colors.green[600]),
+                        const SizedBox(width: 4),
+                        Text('$_correctCount', style: TextStyle(color: Colors.green[600], fontWeight: FontWeight.w600)),
+                        const SizedBox(width: 12),
+                        Icon(Icons.cancel, size: 18, color: Colors.red[400]),
+                        const SizedBox(width: 4),
+                        Text('$_incorrectCount', style: TextStyle(color: Colors.red[400], fontWeight: FontWeight.w600)),
+                      ],
+                    ),
                   ],
                 ),
-
-                const SizedBox(height: 32),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: const Color(0xFFE8E0F0),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF9575CD)),
+                  ),
+                ),
               ],
             ),
           ),
-        ),
+
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  // 번역 (힌트)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEDE7F6),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _translation,
+                      style: TextStyle(fontSize: 15, color: Colors.grey[700]),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // 빈칸 문장
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF9575CD).withValues(alpha: 0.12),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      _sentenceWithBlank,
+                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A237E), height: 1.5),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 뜻 표시
+                  Text(
+                    '뜻: ${word.meaning}',
+                    style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 힌트
+                  if (_hintUsed && !_answered)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber[300]!),
+                      ),
+                      child: Text('힌트: $_hint...', style: TextStyle(fontSize: 16, color: Colors.amber[800])),
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // 입력 필드
+                  if (!_answered)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _focusNode,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 22),
+                            decoration: InputDecoration(
+                              hintText: '정답 입력',
+                              hintStyle: TextStyle(color: Colors.grey[400]),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Color(0xFF9575CD), width: 2),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            ),
+                            onSubmitted: (_) => _checkAnswer(),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                  const SizedBox(height: 16),
+
+                  // 버튼들
+                  if (!_answered)
+                    Row(
+                      children: [
+                        if (!_hintUsed)
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _showHint,
+                              icon: const Icon(Icons.lightbulb_outline),
+                              label: const Text('힌트'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.amber[700],
+                                side: BorderSide(color: Colors.amber[700]!),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                        if (!_hintUsed) const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _checkAnswer,
+                            icon: const Icon(Icons.check),
+                            label: const Text('확인'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF9575CD),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                  // 정답/오답 피드백
+                  if (_answered) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: _isCorrect ? Colors.green[50] : Colors.red[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _isCorrect ? Colors.green[400]! : Colors.red[400]!),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            _isCorrect ? Icons.check_circle : Icons.cancel,
+                            color: _isCorrect ? Colors.green[600] : Colors.red[600],
+                            size: 40,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _isCorrect ? '정답!' : '오답',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: _isCorrect ? Colors.green[700] : Colors.red[700],
+                            ),
+                          ),
+                          if (!_isCorrect) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              '정답: $_answer',
+                              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.red[800]),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Text(
+                            _fullSentence,
+                            style: const TextStyle(fontSize: 18, color: Color(0xFF1A237E)),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _nextQuestion,
+                        icon: const Icon(Icons.arrow_forward),
+                        label: const Text('다음'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF9575CD),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -491,32 +412,18 @@ class _FillBlankScreenState extends State<FillBlankScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                accuracy >= 80
-                    ? Icons.emoji_events
-                    : accuracy >= 50
-                        ? Icons.thumb_up
-                        : Icons.sentiment_neutral,
+                accuracy >= 80 ? Icons.emoji_events : accuracy >= 50 ? Icons.thumb_up : Icons.sentiment_neutral,
                 size: 80,
-                color: const Color(0xFF3949AB),
+                color: const Color(0xFF9575CD),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Complete!',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1A237E),
-                ),
-              ),
+              const Text('학습 완료!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
               const SizedBox(height: 32),
-              _buildStatRow(Icons.check_circle, 'Correct',
-                  '$_correctCount / $total', Colors.green[600]!),
+              _buildStatRow(Icons.check_circle, '정답', '$_correctCount', Colors.green[600]!),
               const SizedBox(height: 12),
-              _buildStatRow(Icons.cancel, 'Incorrect', '$_incorrectCount',
-                  Colors.red[400]!),
+              _buildStatRow(Icons.cancel, '오답', '$_incorrectCount', Colors.red[400]!),
               const SizedBox(height: 12),
-              _buildStatRow(Icons.percent, 'Accuracy', '$accuracy%',
-                  const Color(0xFF3949AB)),
+              _buildStatRow(Icons.percent, '정답률', '$accuracy%', const Color(0xFF9575CD)),
               const SizedBox(height: 40),
               Row(
                 children: [
@@ -524,14 +431,12 @@ class _FillBlankScreenState extends State<FillBlankScreen> {
                     child: OutlinedButton.icon(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.arrow_back),
-                      label: const Text('Back'),
+                      label: const Text('돌아가기'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF3949AB),
                         side: const BorderSide(color: Color(0xFF3949AB)),
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
@@ -540,13 +445,11 @@ class _FillBlankScreenState extends State<FillBlankScreen> {
                     child: FilledButton.icon(
                       onPressed: _restartSession,
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
+                      label: const Text('다시하기'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF3949AB),
+                        backgroundColor: const Color(0xFF9575CD),
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
                   ),
@@ -570,15 +473,9 @@ class _FillBlankScreenState extends State<FillBlankScreen> {
         children: [
           Icon(icon, color: color, size: 24),
           const SizedBox(width: 12),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[700],
-                  fontWeight: FontWeight.w500)),
+          Text(label, style: TextStyle(fontSize: 16, color: Colors.grey[700], fontWeight: FontWeight.w500)),
           const Spacer(),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
         ],
       ),
     );
